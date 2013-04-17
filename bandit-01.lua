@@ -11,7 +11,7 @@ end
 
 local function print_bandit_info (bandit)
   local format = string.format
-  io.write(format("Bandit:   max = %6.3f, dist = ", bandit.max))
+  io.write(format("%16s: max = %6.3f, dist = ", "Bandit", bandit.max))
   for i,v in ipairs(bandit) do
     if i == 1 then io.write("{") else io.write(", ") end
     io.write(format("%5.2f", v))
@@ -69,9 +69,12 @@ end
 local function print_strategy_info (strategy)
   local format = string.format
   local total_reward, num_choices = strategy.total_reward, strategy.num_choices
-  io.write(format("%8s: avg = %6.3f, total = %11.3f, #choices = %3d\n",
-      strategy.type,
-      num_choices > 0 and total_reward/num_choices or num_choices,
+  local max_reward = strategy.bandit.max 
+  local avg_reward = num_choices > 0 and total_reward/num_choices or num_choices
+  io.write(format("%16s: avg = %6.3f ~ %5.1f%%, total = %11.3f, #choices = %3d\n",
+      strategy.type .. (strategy.display_parameter or ""),
+      avg_reward,
+      100 * avg_reward/max_reward,
       total_reward,
       num_choices))
 end
@@ -171,9 +174,40 @@ local epsilon_strategy_metatable = {
 local function make_epsilon_strategy (bandit, epsilon)
   local res = make_strategy_table(bandit)
   res.epsilon = epsilon or 0.01
+  res.display_parameter = string.format(" (%5.3f)", epsilon)
   setmetatable(res, epsilon_strategy_metatable)
   return res
 end
+
+local function choose_varepsilon_greedy_action (strategy)
+  local epsilon = strategy.epsilon
+  strategy.epsilon = 0.99 * strategy.epsilon
+  if (math.random() < epsilon) then
+    return choose_random_action(strategy)
+  else 
+    return choose_greedy_action(strategy)
+  end
+end
+
+
+local varepsilon_strategy_metatable = {
+  __index = {
+    type = "VarEps",
+    choose_action = choose_varepsilon_greedy_action,
+    reward = greedy_action_reward,
+    step = strategy_step,
+    print_info = print_strategy_info,
+  },
+}
+    
+local function make_varepsilon_strategy (bandit, epsilon)
+  local res = make_strategy_table(bandit)
+  res.epsilon = epsilon or 1
+  -- res.display_parameter = string.format(" (%5.3f)", epsilon)
+  setmetatable(res, varepsilon_strategy_metatable)
+  return res
+end
+
 
 for i = 1,10 do
   local avg = 0
@@ -182,16 +216,19 @@ for i = 1,10 do
   local gs = make_greedy_strategy(b)
   local e001s = make_epsilon_strategy(b, 0.01)
   local e010s = make_epsilon_strategy(b, 0.10)
-  for j = 1,10000 do
+  local ves = make_varepsilon_strategy(b)
+  for j = 1,100000 do
     rs:step()
     gs:step()
     e001s:step()
     e010s:step()
+    ves:step()
   end
   b:print_info()
   rs:print_info()
   gs:print_info()
   e001s:print_info()
   e010s:print_info()
+  ves:print_info()
   print()
 end
